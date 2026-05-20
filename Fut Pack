@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FUT Pack Simulator</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #FFDF00;
+      margin-bottom: 5px;
+    }
+
+    .dashboard {
+      background-color: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      max-width: 400px;
+      margin: 0 auto 30px auto;
+      display: flex;
+      justify-content: space-between;
+      border: 1px solid #444;
+    }
+
+    .btn {
+      background-color: #FFDF00;
+      color: #1a1a1a;
+      border: none;
+      padding: 15px 30px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .btn:hover { background-color: #e6c200; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { background-color: #555; color: #888; cursor: not-allowed; }
+
+    .pack-area {
+      min-height: 300px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 30px;
+    }
+
+    /* Card Styling */
+    .card {
+      width: 140px;
+      height: 200px;
+      background: linear-gradient(135deg, #e6c200 0%, #b8860b 100%);
+      border-radius: 10px;
+      padding: 10px;
+      box-sizing: border-box;
+      color: #111;
+      position: relative;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideUp 0.4s ease-out forwards;
+    }
+
+    /* Add staggered animation delays for pack items */
+    .card:nth-child(1) { animation-delay: 0.1s; }
+    .card:nth-child(2) { animation-delay: 0.2s; }
+    .card:nth-child(3) { animation-delay: 0.3s; }
+    .card:nth-child(4) { animation-delay: 0.4s; }
+    .card:nth-child(5) { animation-delay: 0.5s; }
+
+    .card.walkout {
+      width: 160px;
+      height: 230px;
+      background: linear-gradient(135deg, #fffacd 0%, #daa520 100%);
+      border: 2px solid #fff;
+      box-shadow: 0 0 25px rgba(255, 223, 0, 0.8);
+      animation: walkoutPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      z-index: 10;
+    }
+
+    .rating { font-size: 32px; font-weight: 900; line-height: 1; margin-top: 10px; }
+    .position { font-size: 14px; font-weight: bold; margin-bottom: 10px; }
+    .name { font-size: 15px; font-weight: 800; text-transform: uppercase; margin-top: 25px; }
+    .price { position: absolute; bottom: 10px; left: 0; right: 0; font-size: 13px; font-weight: bold; color: #222; }
+
+    .pack-summary {
+      margin-top: 30px;
+      font-size: 20px;
+      color: #ccc;
+      display: none;
+    }
+
+    @keyframes slideUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes walkoutPop {
+      0% { opacity: 0; transform: scale(0.5) translateY(50px); }
+      100% { opacity: 1; transform: scale(1.1) translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>EA FC Pack Simulator</h1>
+  <p style="color: #aaa; margin-bottom: 30px;">Premium Gold Pack (5 Players)</p>
+
+  <div class="dashboard">
+    <div>
+      <span style="color: #aaa; font-size: 12px; display: block;">CLUB BALANCE</span>
+      <strong id="coinBalance" style="font-size: 20px;">100,000</strong> <span style="color: #FFDF00;">🪙</span>
+    </div>
+    <div style="text-align: right;">
+      <span style="color: #aaa; font-size: 12px; display: block;">PACK COST</span>
+      <strong style="font-size: 20px;">7,500</strong> <span style="color: #FFDF00;">🪙</span>
+    </div>
+  </div>
+
+  <button id="openPackBtn" class="btn" onclick="openPack()">Open Pack</button>
+
+  <div id="packArea" class="pack-area"></div>
+
+  <div id="packSummary" class="pack-summary">
+    Total Pack Value: <strong id="packValue" style="color: #FFDF00;">0</strong> 🪙 <br>
+    <span id="profitMargin" style="font-size: 16px; margin-top: 10px; display: inline-block;"></span>
+  </div>
+
+  <script>
+    // 1. App State
+    let coins = 100000;
+    const PACK_COST = 7500;
+    const CARDS_PER_PACK = 5;
+
+    // 2. Drop Rates (Weights representing percentages)
+    // EA estimated odds: ~7.9% chance of 84+, ~1% chance of 90+
+    const TIER_WEIGHTS = {
+      "90+": 1,      // 1%
+      "86-89": 4,    // 4%
+      "84-85": 10,   // 10%
+      "80-83": 35,   // 35%
+      "75-79": 50    // 50%
+    };
+
+    // 3. Mock Database
+    const DB = [
+      { name: "Mbappé", rating: 91, pos: "ST", tier: "90+", val: 2500000 },
+      { name: "Haaland", rating: 91, pos: "ST", tier: "90+", val: 800000 },
+      { name: "Putellas", rating: 91, pos: "CM", tier: "90+", val: 950000 },
+      { name: "Van Dijk", rating: 89, pos: "CB", tier: "86-89", val: 150000 },
+      { name: "Vinícius Jr.", rating: 89, pos: "LW", tier: "86-89", val: 850000 },
+      { name: "Bellingham", rating: 86, pos: "CM", tier: "86-89", val: 30000 },
+      { name: "Rashford", rating: 85, pos: "LW", tier: "84-85", val: 8000 },
+      { name: "Foden", rating: 85, pos: "RW", tier: "84-85", val: 6500 },
+      { name: "Grealish", rating: 83, pos: "LW", tier: "80-83", val: 1200 },
+      { name: "Enzo", rating: 83, pos: "CM", tier: "80-83", val: 900 },
+      { name: "Núñez", rating: 82, pos: "ST", tier: "80-83", val: 850 },
+      { name: "Maguire", rating: 79, pos: "CB", tier: "75-79", val: 400 },
+      { name: "McTominay", rating: 79, pos: "CM", tier: "75-79", val: 400 },
+      { name: "Evans", rating: 75, pos: "CB", tier: "75-79", val: 300 },
+      { name: "Garnacho", rating: 75, pos: "LW", tier: "75-79", val: 700 }
+    ];
+
+    // 4. Update UI Balance
+    function updateBalance() {
+      document.getElementById('coinBalance').innerText = coins.toLocaleString();
+    }
+
+    // 5. Pack Generation Logic
+    function pullCard() {
+      // Create a random number between 1 and 100
+      let rand = Math.floor(Math.random() * 100) + 1;
+      let selectedTier = "75-79";
+
+      // Determine Tier based on weights
+      for (const [tier, weight] of Object.entries(TIER_WEIGHTS)) {
+        if (rand <= weight) {
+          selectedTier = tier;
+          break;
+        }
+        rand -= weight;
+      }
+
+      // Filter DB for players in that tier and pick one randomly
+      const eligiblePlayers = DB.filter(p => p.tier === selectedTier);
+      const randomIndex = Math.floor(Math.random() * eligiblePlayers.length);
+      return eligiblePlayers[randomIndex];
+    }
+
+    function openPack() {
+      if (coins < PACK_COST) {
+        alert("Not enough coins!");
+        return;
+      }
+
+      // Deduct cost and disable button temporarily
+      coins -= PACK_COST;
+      updateBalance();
+      const btn = document.getElementById('openPackBtn');
+      btn.disabled = true;
+      btn.innerText = "Opening...";
+      
+      const packArea = document.getElementById('packArea');
+      const summary = document.getElementById('packSummary');
+      packArea.innerHTML = "";
+      summary.style.display = "none";
+
+      // Generate Cards
+      let pulledCards = [];
+      let totalValue = 0;
+
+      for (let i = 0; i < CARDS_PER_PACK; i++) {
+        const card = pullCard();
+        pulledCards.push(card);
+        totalValue += card.val;
+      }
+
+      // Sort by rating so the best card is rendered first (The Walkout)
+      pulledCards.sort((a, b) => b.rating - a.rating);
+
+      // Render Cards to DOM
+      setTimeout(() => {
+        pulledCards.forEach((card, index) => {
+          const isWalkout = index === 0 && card.rating >= 86; // 86+ is a walkout
+          
+          const cardDiv = document.createElement('div');
+          cardDiv.className = `card ${isWalkout ? 'walkout' : ''}`;
+          
+          cardDiv.innerHTML = `
+            <div class="rating">${card.rating}</div>
+            <div class="position">${card.pos}</div>
+            <div class="name">${card.name}</div>
+            <div class="price">${card.val.toLocaleString()} 🪙</div>
+          `;
+          
+          packArea.appendChild(cardDiv);
+        });
+
+        // Update Summary Data
+        document.getElementById('packValue').innerText = totalValue.toLocaleString();
+        
+        const profitEl = document.getElementById('profitMargin');
+        const profit = totalValue - PACK_COST;
+        if (profit >= 0) {
+          profitEl.innerText = `Profit: +${profit.toLocaleString()} 🪙 🟢`;
+          profitEl.style.color = "#4CAF50";
+        } else {
+          profitEl.innerText = `Loss: ${profit.toLocaleString()} 🪙 🔴`;
+          profitEl.style.color = "#f44336";
+        }
+        
+        summary.style.display = "block";
+
+        // Re-enable button
+        btn.disabled = false;
+        btn.innerText = "Open Pack";
+      }, 500); // 500ms delay for suspense
+    }
+  </script>
+</body>
+</html>
